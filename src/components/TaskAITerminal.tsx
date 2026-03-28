@@ -1,4 +1,4 @@
-import { Show, For, createSignal, onMount, onCleanup } from 'solid-js';
+import { Show, For, createSignal, createEffect, onMount, onCleanup } from 'solid-js';
 import {
   store,
   markAgentExited,
@@ -20,6 +20,7 @@ import { sf } from '../lib/fontScale';
 import { invoke } from '../lib/ipc';
 import { IPC } from '../../electron/ipc/channels';
 import { createHighlightedMarkdown } from '../lib/marked-shiki';
+import { renderMermaidBlocks } from '../lib/mermaid-render';
 import type { Task } from '../store/types';
 import type { PromptInputHandle } from './PromptInput';
 
@@ -35,6 +36,7 @@ export function TaskAITerminal(props: TaskAITerminalProps) {
   // --- Markdown file viewer ---
   const [mdViewerContent, setMdViewerContent] = createSignal('');
   const [mdViewerFileName, setMdViewerFileName] = createSignal('');
+  const [mdViewerFilePath, setMdViewerFilePath] = createSignal('');
   const [mdViewerOpen, setMdViewerOpen] = createSignal(false);
 
   function handleFileLink(filePath: string) {
@@ -42,6 +44,7 @@ export function TaskAITerminal(props: TaskAITerminalProps) {
       .then((content) => {
         setMdViewerContent(content);
         setMdViewerFileName(filePath.split('/').pop() ?? filePath);
+        setMdViewerFilePath(filePath);
         setMdViewerOpen(true);
       })
       .catch((err) => {
@@ -211,6 +214,8 @@ export function TaskAITerminal(props: TaskAITerminalProps) {
         onClose={() => setMdViewerOpen(false)}
         content={mdViewerContent()}
         fileName={mdViewerFileName()}
+        filePath={mdViewerFilePath()}
+        onNavigate={handleFileLink}
       />
     </>
   );
@@ -221,8 +226,20 @@ function MarkdownViewerDialog(props: {
   onClose: () => void;
   content: string;
   fileName: string;
+  filePath?: string;
+  onNavigate?: (filePath: string) => void;
 }) {
   const html = createHighlightedMarkdown(() => props.content);
+  let mdContentRef: HTMLDivElement | undefined;
+
+  createEffect(() => {
+    const h = html();
+    if (!h || !props.open) return;
+    // Wait for DOM update after innerHTML change
+    requestAnimationFrame(() => {
+      if (mdContentRef) renderMermaidBlocks(mdContentRef);
+    });
+  });
 
   return (
     <Dialog
@@ -231,8 +248,9 @@ function MarkdownViewerDialog(props: {
       width="fit-content"
       panelStyle={{
         width: '80vw',
-        'max-width': '1200px',
+        'max-width': 'calc(100vw - 32px)',
         height: '80vh',
+        'max-height': 'calc(100vh - 32px)',
         overflow: 'hidden',
         padding: '0',
         gap: '0',
@@ -287,8 +305,24 @@ function MarkdownViewerDialog(props: {
         }}
       >
         <div
+          ref={mdContentRef}
           class="plan-markdown plan-markdown-dialog"
           style={{ color: theme.fg, 'max-width': '100%' }}
+          onClick={(e) => {
+            const anchor = (e.target as HTMLElement).closest('a');
+            if (!anchor) return;
+            e.preventDefault();
+            const href = anchor.getAttribute('href');
+            if (!href) return;
+            if (href.startsWith('http:') || href.startsWith('https:')) {
+              window.open(href, '_blank');
+            } else if (/\.md$/i.test(href)) {
+              // Resolve relative paths against the current file's directory
+              const dir = props.filePath ? props.filePath.replace(/\/[^/]+$/, '') : '';
+              const resolved = href.startsWith('/') ? href : `${dir}/${href}`;
+              props.onNavigate?.(resolved);
+            }
+          }}
           // eslint-disable-next-line solid/no-innerhtml -- local markdown files from worktree
           innerHTML={html()}
         />

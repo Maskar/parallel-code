@@ -7,6 +7,7 @@ import { ReviewCommentCard } from './ReviewCommentCard';
 import { InlineInput } from './InlineInput';
 import { AskCodeCard } from './AskCodeCard';
 import { createHighlightedMarkdown } from '../lib/marked-shiki';
+import { renderMermaidBlocks } from '../lib/mermaid-render';
 import { getPlanSelection } from '../lib/plan-selection';
 import { theme } from '../lib/theme';
 import { sf } from '../lib/fontScale';
@@ -99,6 +100,14 @@ function PlanViewerContent(props: PlanViewerContentProps) {
     () => scrollRef,
     () => !!props.planContent,
   );
+
+  // Render mermaid blocks after HTML is inserted
+  createEffect(() => {
+    void planHtml(); // track dependency
+    requestAnimationFrame(() => {
+      if (contentRef) renderMermaidBlocks(contentRef);
+    });
+  });
 
   // Scroll to annotation when scrollTarget changes
   createEffect(() => {

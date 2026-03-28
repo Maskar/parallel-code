@@ -27,6 +27,10 @@ export async function renderMarkdownWithHighlighting(markdown: string): Promise<
   let blockIndex = 0;
   const renderer = {
     code(token: Tokens.Code): string {
+      // Mermaid blocks → render as placeholder for client-side rendering
+      if (token.lang === 'mermaid') {
+        return `<pre class="mermaid-block"><code>${escapeHtml(token.text ?? '')}</code></pre>`;
+      }
       const idx = blockIndex++;
       const lines = idx < highlighted.length ? highlighted[idx] : null;
       const langAttr = token.lang ? ` data-lang="${escapeAttr(token.lang)}"` : '';
@@ -57,7 +61,7 @@ function collectCodeTokens(
   out: { lang: string; text: string }[],
 ): void {
   for (const token of tokens) {
-    if (token.type === 'code') {
+    if (token.type === 'code' && token.lang !== 'mermaid') {
       out.push({ lang: (token.lang as string) ?? '', text: (token.text as string) ?? '' });
     }
     if (Array.isArray(token.tokens)) {
